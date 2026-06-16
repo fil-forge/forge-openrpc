@@ -1,0 +1,562 @@
+{
+  "openrpc": "1.4.1",
+  "info": {
+    "title": "sprue",
+    "description": "The Forge Upload Service.",
+    "license": {
+      "name": "Apache-2.0 OR MIT",
+      "url": "https://github.com/storacha/sprue/blob/main/LICENSE"
+    },
+    "version": "0.0.0"
+  },
+  "servers": [
+    {
+      "name": "did:web:upload.forge.fil.one",
+      "url": "https://upload.forge.fil.one"
+    }
+  ],
+  "methods": [
+    {
+      "name": "/access/claim",
+      "description": "Issuer: agent\nSubject: agent\n\nRetrieves any delegations stored via `/access/delegate` or `/access/confirm` whose _audience_ matches the invocation subject.",
+      "params": [],
+      "result": {
+        "name": "claimOK",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "delegations": {
+              "items": {
+                "$ref": "#/components/schemas/cid"
+              }
+            }
+          },
+          "title": "ClaimOK",
+          "required": [
+            "delegations"
+          ]
+        }
+      }
+    },
+    {
+      "name": "/access/confirm",
+      "description": "Issuer: upload service\nSubject: upload service\n\nAn invocation created in response to an access request (`/access/request`).\n\nIt is created and signed by the upload service, but _not_ executed. It is sent via email to an account holder. Clicking on the link in the email sends the invocation back to the upload service for execution.\n\nDelegations requested from the `/access/request` invocation are copied into the `/access/confirm` invocation so that when it is executed, it can create the necessary delegations from the account (`did:mailto:`) to the agent. The account delegation requires an attestation, since `did:mailto:` is not a crypto key and cannot sign a delegation.\n\nDelegations are sent in the invocation receipt, but also stored by the upload service for retrieval via `/access/claim`.",
+      "params": [
+        {
+          "name": "cause",
+          "schema": {
+            "$ref": "#/components/schemas/cid"
+          },
+          "required": true
+        },
+        {
+          "name": "iss",
+          "schema": {
+            "$ref": "#/components/schemas/did"
+          },
+          "required": true
+        },
+        {
+          "name": "aud",
+          "schema": {
+            "$ref": "#/components/schemas/did"
+          },
+          "required": true
+        },
+        {
+          "name": "att",
+          "schema": {
+            "items": {
+              "$ref": "#/components/schemas/capabilityRequest"
+            }
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "claimOK",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "delegations": {
+              "items": {
+                "$ref": "#/components/schemas/cid"
+              }
+            }
+          },
+          "title": "ClaimOK",
+          "required": [
+            "delegations"
+          ]
+        }
+      }
+    },
+    {
+      "name": "/access/delegate",
+      "description": "Issuer: agent\nSubject: space\n\nSend delegations to the upload service for retrieval later via `/access/claim`. Using the space as the subject allows the service to verify a paid account is setup, so that it is not storing delegations for arbitrary audiences.",
+      "params": [
+        {
+          "name": "delegations",
+          "schema": {
+            "items": {
+              "$ref": "#/components/schemas/cid"
+            }
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "unit",
+        "schema": {
+          "type": "object",
+          "properties": {},
+          "title": "Unit"
+        }
+      }
+    },
+    {
+      "name": "/access/request",
+      "description": "Issuer: agent\nSubject: agent\n\nRequest delegations for specified commands from account (email) in the invocation arguments. Delegations are addressed to the invocation subject.\n\nAn `/access/confirm` invocation is created and signed by the upload service, but _not_ executed. It is sent via email to an account holder.\n\nReceipt of the `/access/confirm` invocation by the upload service confirms the account has consented to the request.",
+      "params": [
+        {
+          "name": "iss",
+          "schema": {
+            "$ref": "#/components/schemas/did"
+          },
+          "required": true
+        },
+        {
+          "name": "att",
+          "schema": {
+            "items": {
+              "$ref": "#/components/schemas/capabilityRequest"
+            }
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "requestOK",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "confirm": {
+              "$ref": "#/components/schemas/awaitOK"
+            },
+            "exp": {
+              "type": "integer",
+              "description": "A 64-bit integer."
+            },
+            "req": {
+              "$ref": "#/components/schemas/cid"
+            }
+          },
+          "title": "RequestOK",
+          "required": [
+            "req",
+            "confirm",
+            "exp"
+          ]
+        }
+      }
+    },
+    {
+      "name": "/blob/add",
+      "description": "Issuer: agent\nSubject: space\n\nRequests to add a blob (identified by multihash and size) to a space. The response includes a promise for `/http/put` - an task for the agent to perform and send the receipt back to the uplaod service via `/ucan/conclude`. It also includes promise for a `/blob/accept` invocation which is made by the upload service to the Piri node when the `/http/put` receipt is received.\n\nThe `/blob/accept` invocation returns a location commitment for the blob that describes where the blob may be retrieved from (via a `/content/retrieve` or `/blob/retrieve` invocation).",
+      "params": [
+        {
+          "name": "blob",
+          "schema": {
+            "$ref": "#/components/schemas/blob"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "addOK",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "site": {
+              "$ref": "#/components/schemas/awaitOK"
+            }
+          },
+          "title": "AddOK",
+          "required": [
+            "site"
+          ]
+        }
+      }
+    },
+    {
+      "name": "/blob/list",
+      "description": "Issuer: agent\nSubject: space\n\nLists blobs stored in a space.",
+      "params": [
+        {
+          "name": "cursor",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "size",
+          "schema": {
+            "type": "integer",
+            "description": "An unsigned 64-bit integer.",
+            "minimum": 0
+          }
+        }
+      ],
+      "result": {
+        "name": "listOK",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "cursor": {
+              "type": "string"
+            },
+            "results": {
+              "items": {
+                "$ref": "#/components/schemas/listBlobItem"
+              }
+            },
+            "size": {
+              "type": "integer",
+              "description": "An unsigned 64-bit integer.",
+              "minimum": 0
+            }
+          },
+          "title": "ListOK",
+          "required": [
+            "size",
+            "results"
+          ]
+        }
+      }
+    },
+    {
+      "name": "/index/add",
+      "description": "Issuer: agent\nSubject: space\n\nInforms the service that one of the blobs uploaded to the space is actually an index,",
+      "params": [
+        {
+          "name": "index",
+          "schema": {
+            "$ref": "#/components/schemas/cid"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "unit",
+        "schema": {
+          "type": "object",
+          "properties": {},
+          "title": "Unit"
+        }
+      }
+    },
+    {
+      "name": "/provider/add",
+      "params": [
+        {
+          "name": "provider",
+          "schema": {
+            "$ref": "#/components/schemas/did"
+          },
+          "required": true
+        },
+        {
+          "name": "consumer",
+          "schema": {
+            "$ref": "#/components/schemas/did"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "addOK",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            }
+          },
+          "title": "AddOK",
+          "required": [
+            "id"
+          ]
+        }
+      }
+    },
+    {
+      "name": "/space/info",
+      "params": [],
+      "result": {
+        "name": "infoOK",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "providers": {
+              "items": {
+                "$ref": "#/components/schemas/did"
+              }
+            }
+          },
+          "title": "InfoOK",
+          "required": [
+            "providers"
+          ]
+        }
+      }
+    },
+    {
+      "name": "/ucan/conclude",
+      "params": [
+        {
+          "name": "receipt",
+          "schema": {
+            "$ref": "#/components/schemas/cid"
+          },
+          "required": true
+        }
+      ],
+      "result": {
+        "name": "unit",
+        "schema": {
+          "type": "object",
+          "properties": {},
+          "title": "Unit"
+        }
+      }
+    },
+    {
+      "name": "/upload/add",
+      "params": [
+        {
+          "name": "root",
+          "schema": {
+            "$ref": "#/components/schemas/cid"
+          },
+          "required": true
+        },
+        {
+          "name": "shards",
+          "schema": {
+            "items": {
+              "$ref": "#/components/schemas/cid"
+            }
+          },
+          "required": true
+        },
+        {
+          "name": "index",
+          "schema": {
+            "$ref": "#/components/schemas/cid"
+          }
+        }
+      ],
+      "result": {
+        "name": "unit",
+        "schema": {
+          "type": "object",
+          "properties": {},
+          "title": "Unit"
+        }
+      }
+    },
+    {
+      "name": "/upload/list",
+      "params": [
+        {
+          "name": "cursor",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "size",
+          "schema": {
+            "type": "integer",
+            "description": "An unsigned 64-bit integer.",
+            "minimum": 0
+          }
+        }
+      ],
+      "result": {
+        "name": "listOK",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "cursor": {
+              "type": "string"
+            },
+            "results": {
+              "items": {
+                "$ref": "#/components/schemas/listUploadItem"
+              }
+            },
+            "size": {
+              "type": "integer",
+              "description": "An unsigned 64-bit integer.",
+              "minimum": 0
+            }
+          },
+          "title": "ListOK",
+          "required": [
+            "size",
+            "results"
+          ]
+        }
+      }
+    },
+    {
+      "name": "/upload/shard/list",
+      "params": [
+        {
+          "name": "root",
+          "schema": {
+            "$ref": "#/components/schemas/cid"
+          },
+          "required": true
+        },
+        {
+          "name": "cursor",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "size",
+          "schema": {
+            "type": "integer",
+            "description": "An unsigned 64-bit integer.",
+            "minimum": 0
+          }
+        }
+      ],
+      "result": {
+        "name": "listOK",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "cursor": {
+              "type": "string"
+            },
+            "results": {
+              "items": {
+                "$ref": "#/components/schemas/cid"
+              }
+            },
+            "size": {
+              "type": "integer",
+              "description": "An unsigned 64-bit integer.",
+              "minimum": 0
+            }
+          },
+          "title": "ListOK",
+          "required": [
+            "size",
+            "results"
+          ]
+        }
+      }
+    }
+  ],
+  "components": {
+    "schemas": {
+      "awaitOK": {
+        "type": "object",
+        "properties": {
+          "await/ok": {
+            "$ref": "#/components/schemas/cid"
+          }
+        },
+        "title": "AwaitOK",
+        "description": "A promise of task completion."
+      },
+      "blob": {
+        "type": "object",
+        "properties": {
+          "digest": {
+            "$ref": "#/components/schemas/multihash"
+          },
+          "size": {
+            "type": "integer",
+            "description": "An unsigned 64-bit integer.",
+            "minimum": 0
+          }
+        },
+        "title": "Blob",
+        "required": [
+          "digest",
+          "size"
+        ]
+      },
+      "capabilityRequest": {
+        "type": "object",
+        "properties": {
+          "cmd": {
+            "$ref": "#/components/schemas/command"
+          }
+        },
+        "title": "CapabilityRequest",
+        "required": [
+          "cmd"
+        ]
+      },
+      "cid": {
+        "type": "object",
+        "title": "CID",
+        "description": "An IPLD content identifier (CID)."
+      },
+      "command": {
+        "type": "string",
+        "title": "Command",
+        "description": "A UCAN command string, e.g. `/blob/add`."
+      },
+      "did": {
+        "type": "string",
+        "title": "DID",
+        "description": "A decentralized identifier (DID)."
+      },
+      "listBlobItem": {
+        "type": "object",
+        "properties": {
+          "blob": {
+            "$ref": "#/components/schemas/blob"
+          },
+          "insertedAt": {
+            "type": "integer",
+            "description": "A 64-bit integer."
+          }
+        },
+        "title": "ListBlobItem",
+        "required": [
+          "blob",
+          "insertedAt"
+        ]
+      },
+      "listUploadItem": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "$ref": "#/components/schemas/cid"
+          },
+          "root": {
+            "$ref": "#/components/schemas/cid"
+          }
+        },
+        "title": "ListUploadItem",
+        "required": [
+          "root"
+        ]
+      },
+      "multihash": {
+        "type": "object",
+        "title": "Multihash",
+        "description": "An IPLD multihash."
+      }
+    }
+  }
+}
